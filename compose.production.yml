@@ -1,0 +1,57 @@
+name: activitytracker
+services:
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE to a GHCR image digest}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${APP_BIND_IP:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      AllowedHosts: ${ALLOWED_HOSTS:?Set ALLOWED_HOSTS}
+      ConnectionStrings__Default: Host=db;Port=5432;Database=activitytracker;Username=tracker;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      DataProtection__KeyDirectory: /keys
+      ReverseProxy__KnownProxy: ${TRUSTED_PROXY_IP:-}
+      Strava__ClientId: ${STRAVA_CLIENT_ID:-}
+      Strava__ClientSecret: ${STRAVA_CLIENT_SECRET:-}
+      Strava__RedirectUri: ${STRAVA_REDIRECT_URI:-}
+      TZ: Europe/Warsaw
+    volumes:
+      - protection_keys:/keys
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, '5', 'http://127.0.0.1:8080/health']
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: activitytracker
+      POSTGRES_USER: tracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U tracker -d activitytracker']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+volumes:
+  postgres_data:
+  protection_keys:

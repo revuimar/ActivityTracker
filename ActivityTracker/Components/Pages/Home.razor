@@ -1,0 +1,22 @@
+@page "/"
+@inject IDbContextFactory<TrackerDb> DbFactory
+<h1>Morning Challenge</h1><p class="muted">Move every morning. Build the habit. Earn your weekly bonus.</p>
+<div class="stats"><div class="tile"><span>Daily points</span><strong>5–7</strong></div><div class="tile"><span>5 / 6 / 7 mornings</span><strong>+5 / +10 / +15</strong></div><div class="tile"><span>Morning cutoff</span><strong>11:00</strong></div></div>
+<section><div class="section-head"><h2>Weekly leaderboard</h2><span class="muted">@Monday.ToString("dd MMM") – @Monday.AddDays(6).ToString("dd MMM yyyy")</span></div>
+@if (Rows is null) { <p>Loading...</p> }
+else if (Rows.Count == 0) { <p class="muted">No participants yet. Connect your Strava account to get started.</p> }
+else { <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Athlete</th><th>Mornings</th><th>Workout</th><th>Bonus</th><th>Total</th></tr></thead><tbody>@for (var i=0; i<Rows.Count; i++) { var row=Rows[i]; <tr><td>@(i+1)</td><td><b>@row.Name</b></td><td>@row.ActiveDays / 7</td><td>@row.WorkoutPoints</td><td>+@row.Bonus</td><td><strong>@row.Total</strong></td></tr> }</tbody></table></div> }
+</section>
+<section><h2>How scoring works</h2><p>15–29 minutes: 5 points · 30–44 minutes: 6 points · 45+ minutes: 7 points. One qualifying activity per day, completed by 11:00. Weekly bonus is based on distinct active mornings, Monday through Sunday.</p></section>
+@code {
+    private List<ScoreRow>? Rows;
+    private DateOnly Monday;
+    protected override async Task OnInitializedAsync()
+    {
+        var today=DateOnly.FromDateTime(DateTime.Today);
+        Monday=today.AddDays(-((int)today.DayOfWeek+6)%7);
+        await using var db=await DbFactory.CreateDbContextAsync();
+        var people=await db.Participants.Include(p=>p.Activities).AsNoTracking().ToListAsync();
+        Rows=Scoring.Weekly(people,Monday,new TimeOnly(11,0));
+    }
+}
