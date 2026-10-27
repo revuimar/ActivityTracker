@@ -119,7 +119,7 @@ fake = new FakeHttp(_ => {
         : Json("{}", HttpStatusCode.Unauthorized));
     if (path.EndsWith("/athlete/activities")) {
         listCalls++;
-        var pageTwo = _.RequestUri.Query.Contains("page=2");
+        var pageTwo = _.RequestUri.Query.Contains("&page=2", StringComparison.Ordinal);
         return Task.FromResult(Json(pageTwo ? "[]" : "[" + activityJson + "]"));
     }
     if (path.EndsWith("/athlete")) return Task.FromResult(Json("{\"id\":77}"));
@@ -135,6 +135,10 @@ async Task WaitFor(Func<TrackerDb, Task<bool>> predicate, string name) {
         if (await predicate(db)) { Check(true, name); return; }
         await Task.Delay(200);
     }
+    await using var snapshot = await factory.CreateDbContextAsync();
+    var jobs = await snapshot.StravaSyncJobs.AsNoTracking().ToListAsync();
+    Console.WriteLine($"Database snapshot: activities={await snapshot.Activities.CountAsync()}, jobs={jobs.Count}");
+    foreach (var job in jobs) Console.WriteLine($"Job: activity={job.ActivityId}, attempts={job.Attempts}, version={job.Version}");
     throw new Exception("Timed out: " + name);
 }
 await WaitFor(async db => await db.Activities.CountAsync() == 1 && !await db.StravaSyncJobs.AnyAsync(), "initial paginated import stores workouts and finishes queued job");
