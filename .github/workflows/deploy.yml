@@ -49,6 +49,7 @@ jobs:
           STRAVA_TEST_DATABASE: Host=127.0.0.1;Port=15432;Database=activitytracker;Username=tracker;Password=ci-only-disposable-database-password
         run: |
           docker compose --env-file /dev/null -f compose.production.yml -f tests/compose.integration.yml up -d --wait --wait-timeout 180
+          docker compose --env-file /dev/null -f compose.production.yml exec -T db psql -v ON_ERROR_STOP=1 -U tracker activitytracker < tests/history-fixtures.sql
           python3 tests/integration.py
           dotnet run --project tests/StravaChecks --configuration Release
       - name: Remove disposable smoke test database

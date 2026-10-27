@@ -3,5 +3,6 @@
   <ItemGroup>
     <Compile Include="../../ActivityTracker/Models/Entities.cs" Link="Entities.cs" />
     <Compile Include="../../ActivityTracker/Services/Scoring.cs" Link="Scoring.cs" />
+    <Compile Include="../../ActivityTracker/Services/LeaderboardWeeks.cs" Link="LeaderboardWeeks.cs" />
   </ItemGroup>
 </Project>
