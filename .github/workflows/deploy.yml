@@ -26,6 +26,10 @@ jobs:
         run: dotnet run --project tests/ScoringChecks --configuration Release
       - name: Build container
         run: docker build --tag activitytracker:ci ActivityTracker
+      - name: Prepare disposable CI environment file
+        run: |
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /opt/activitytracker/shared
+          sudo install -m 600 -o "$(id -u)" -g "$(id -g)" /dev/null /opt/activitytracker/shared/.env
       - name: Smoke test application and PostgreSQL
         env:
           APP_IMAGE: activitytracker:ci
