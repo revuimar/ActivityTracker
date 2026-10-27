@@ -1,0 +1,39 @@
+@page "/strava"
+@inject IDbContextFactory<TrackerDb> DbFactory
+@inject IConfiguration Config
+<h1>Strava activities</h1>
+@if (Context?.User.Identity?.IsAuthenticated != true) {
+    <p><a href="/login">Log in</a> to connect Strava and sync your workouts.</p>
+} else {
+    <section>
+        @if (Person?.StravaActivityReadGranted != true || Person.AccessToken is null) {
+            <p>Connect or reconnect Strava and allow activity access to import your workouts.</p>
+            <a class="button" href="/auth/strava/start">Connect Strava</a>
+        } else {
+            <p>@StatusText</p>
+            @if (Person.LastStravaSyncAt is { } synced) {
+                <p>Last successful sync: @TimeZoneInfo.ConvertTimeBySystemTimeZoneId(synced, "Europe/Warsaw").ToString("dd MMM yyyy HH:mm") (Warsaw).</p>
+            }
+            <p>@ActivityCount imported activities. Only workouts that meet each leaderboard's rules earn points.</p>
+            <form method="post" action="/strava/sync"><AntiforgeryToken /><button type="submit">Sync now</button></form>
+            <p><a href="/strava">Refresh sync status</a> · <a href="/auth/strava/start">Reconnect Strava</a></p>
+        }
+        <p class="muted">Connecting imports the last @ImportDays days of accessible activities. New activities update automatically after webhook setup; a daily sync checks recent history too. Workouts marked “Only You” are excluded. Qualifying workouts contribute to public leaderboard scores.</p>
+    </section>
+}
+@code {
+    [CascadingParameter] public HttpContext? Context { get; set; }
+    private Participant? Person;
+    private int ActivityCount;
+    private bool Pending;
+    private int ImportDays => Math.Clamp(Config.GetValue<int?>("Strava:ImportDays") ?? 90, 7, 365);
+    private string StatusText => Person?.StravaSyncStatus == "retrying" ? "Sync is waiting to retry. This can happen when Strava is busy or its request limit is reached."
+        : Pending ? "Sync is queued or in progress. Refresh this page shortly." : "Your Strava connection is ready.";
+    protected override async Task OnParametersSetAsync() {
+        if (Context?.User.Identity?.IsAuthenticated != true || !int.TryParse(Context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        Person = await db.Participants.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id);
+        ActivityCount = await db.Activities.CountAsync(a => a.ParticipantId == id);
+        Pending = await db.StravaSyncJobs.AnyAsync(j => j.ParticipantId == id);
+    }
+}

@@ -11,6 +11,9 @@ services:
       Strava__ClientId: ${STRAVA_CLIENT_ID:-}
       Strava__ClientSecret: ${STRAVA_CLIENT_SECRET:-}
       Strava__RedirectUri: ${STRAVA_REDIRECT_URI:-http://localhost:8080/auth/strava/callback}
+      Strava__WebhookVerifyToken: ${STRAVA_WEBHOOK_VERIFY_TOKEN:-}
+      Strava__WebhookSubscriptionId: ${STRAVA_WEBHOOK_SUBSCRIPTION_ID:-0}
+      Strava__ImportDays: ${STRAVA_IMPORT_DAYS:-90}
     depends_on:
       db:
         condition: service_healthy

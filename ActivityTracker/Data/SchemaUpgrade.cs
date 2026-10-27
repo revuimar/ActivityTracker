@@ -20,6 +20,19 @@ public static class SchemaUpgrade
             ALTER TABLE "Participants" ALTER COLUMN "StravaAthleteId" DROP NOT NULL;
             ALTER TABLE "Participants" ADD COLUMN IF NOT EXISTS "NormalizedEmail" character varying(254);
             ALTER TABLE "Participants" ADD COLUMN IF NOT EXISTS "PasswordHash" text;
+            ALTER TABLE "Participants" ADD COLUMN IF NOT EXISTS "StravaActivityReadGranted" boolean NOT NULL DEFAULT false;
+            ALTER TABLE "Participants" ADD COLUMN IF NOT EXISTS "LastStravaSyncAt" timestamp with time zone;
+            ALTER TABLE "Participants" ADD COLUMN IF NOT EXISTS "LastStravaFullSyncAt" timestamp with time zone;
+            ALTER TABLE "Participants" ADD COLUMN IF NOT EXISTS "StravaSyncStatus" text NOT NULL DEFAULT 'not-connected';
+            CREATE TABLE IF NOT EXISTS "StravaSyncJobs" (
+                "ParticipantId" integer NOT NULL REFERENCES "Participants" ("Id") ON DELETE CASCADE,
+                "ActivityId" bigint NOT NULL,
+                "Version" bigint NOT NULL DEFAULT 1,
+                "Attempts" integer NOT NULL DEFAULT 0,
+                "NextAttemptAt" timestamp with time zone NOT NULL,
+                PRIMARY KEY ("ParticipantId", "ActivityId")
+            );
+            CREATE INDEX IF NOT EXISTS "IX_StravaSyncJobs_NextAttemptAt" ON "StravaSyncJobs" ("NextAttemptAt");
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Participants_NormalizedEmail" ON "Participants" ("NormalizedEmail");
             ALTER TABLE "Challenges" ADD COLUMN IF NOT EXISTS "Description" character varying(1000) NOT NULL DEFAULT '';
             CREATE TABLE IF NOT EXISTS "LeaderboardExclusions" (

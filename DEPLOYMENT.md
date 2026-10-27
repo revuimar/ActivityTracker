@@ -1,5 +1,31 @@
 # GitHub → GHCR → Ubuntu VPS
 
+## Enable Strava activity sync after deploying this version
+
+This application's configured Strava quotas are **400 requests per 15 minutes / 4,000 per day overall**, and **200 requests per 15 minutes / 2,000 per day for reads** (confirmed 27 October 2026). These are shared across all connected athletes. Activity fetches consume both buckets. The worker checks both `X-RateLimit-*` and `X-ReadRateLimit-*` response headers and pauses until the applicable reset whenever either quota is exhausted. The headers remain authoritative if Strava changes the allocation. Pagination uses up to 200 activities per request; webhook HTTP deliveries themselves do not consume an outgoing Strava API request.
+
+Keep the Strava application's **Authorization Callback Domain** set to your hostname only, e.g. `aktywnosci.byst.re`. OAuth continues to use `https://aktywnosci.byst.re/auth/strava/callback`. The webhook has a separate URL: `https://aktywnosci.byst.re/webhooks/strava`.
+
+1. On the VPS, generate a verification token with `openssl rand -hex 32`. Add it to `/opt/activitytracker/shared/.env` as `STRAVA_WEBHOOK_VERIFY_TOKEN=...`. Set `STRAVA_WEBHOOK_SUBSCRIPTION_ID=0` for initial registration. Keep the existing client ID, client secret, HTTPS redirect URI and trusted proxy settings. Optional: `STRAVA_IMPORT_DAYS=90` controls recent-history imports (7–365 days).
+2. Deploy this release, then recreate the app to load those values:
+
+   ```sh
+   cd /opt/activitytracker
+   export APP_IMAGE="$(cat current/image)"
+   docker compose --project-name activitytracker --env-file shared/.env -f current/compose.production.yml config --quiet
+   docker compose --project-name activitytracker --env-file shared/.env -f current/compose.production.yml up -d --no-deps --force-recreate --wait app
+   ```
+
+3. Run `python3 /opt/activitytracker/current/register-strava-webhook.py` on the VPS. It reads credentials from the running app in memory, checks for an existing subscription, and creates one only if none exists. It never prints credentials or changes an existing different subscription. The public webhook GET must be reachable for Strava verification. If reusing an existing subscription, retain its original verification token.
+4. Add the returned `STRAVA_WEBHOOK_SUBSCRIPTION_ID=...` to the shared `.env`, then repeat the recreate command. Event POSTs return 503 until this ID is configured. Retrying **Sync now** covers any activity created during setup. Do not repeatedly recreate the subscription: a single subscription serves all authorized athletes.
+5. Open `/strava`, reconnect once and allow activity access, then use **Sync now** and refresh the sync status. Reconnecting automatically queues the first import. Each athlete connects their own Strava account; email test accounts remain separate accounts. Never paste credentials/tokens into chat or Git.
+
+The worker refreshes expiring access tokens, safely saves rotated refresh tokens before fetching activities, retries transient errors, and pauses at Strava rate limits. A daily recent-history reconciliation covers missed notifications within the configured history window. New/updated/deleted activities are fetched by ID before stored data is changed; duplicate notifications cannot duplicate workouts. Only You workouts are excluded. If Strava confirms revoked access, imported activities and tokens are removed and the app asks the athlete to reconnect. A bad or forged event alone cannot delete an activity or revoke an account.
+
+The upgrade adds sync metadata and a queue without deleting existing tables or rows. Back up the database and `protection_keys` volume before deployment. The app still displays only the current week's leaderboard; sync does not add week history navigation. Confirm your app's athlete capacity in Strava API settings before inviting additional users.
+
+Validation: `dotnet run --project tests/StravaChecks` runs API/scoring checks with a fake Strava server, never live credentials. CI additionally sets `STRAVA_TEST_DATABASE` for disposable PostgreSQL tests (repeatable schema upgrade, durable queue, paginated imports, duplicates, privacy, deletion, and revocation). The CI-only Compose override exposes PostgreSQL on localhost port 15432; production does not expose it.
+
 Repository: https://github.com/revuimar/ActivityTracker
 Server: vps.example.com, SSH port 10335, Ubuntu 24.04.
 

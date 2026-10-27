@@ -1,6 +1,7 @@
 """End-to-end authorization, membership, local login and antiforgery checks; stdlib only."""
 import html
 import http.cookiejar
+import json
 import re
 import urllib.error
 import urllib.parse
@@ -94,4 +95,25 @@ check(status == 302 and 'Bob Member' in anon.request('/leaderboards/1')[1], 'adm
 invalid_board = dict(board, endsOn='2019-01-01')
 check(member.post(board_url + '/edit', '/leaderboards/save', invalid_board)[0] == 400, 'invalid date range rejected')
 check(anon.request('/leaderboards/999999')[0] == 404, 'missing leaderboard returns 404')
+check(anon.request('/strava/sync', {})[0] == 302, 'anonymous sync requests rejected')
+check(member.request('/strava/sync', {})[0] == 400, 'manual sync requires antiforgery token')
+status, _, headers = member.post('/strava', '/strava/sync', {})
+check(status == 302 and headers['Location'] == '/strava?reconnect=true', 'unconnected account cannot enqueue a sync')
+check(anon.request('/webhooks/strava?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=test')[0] == 403,
+      'webhook verification rejects wrong token')
+status, text, _ = anon.request('/webhooks/strava?hub.mode=subscribe&hub.verify_token=ci-only-webhook-verification-token-335&hub.challenge=test-335')
+check(status == 200 and json.loads(text) == {'hub.challenge': 'test-335'}, 'webhook verification echoes the Strava challenge')
+def webhook(subscription_id):
+    request = urllib.request.Request(BASE + '/webhooks/strava', data=json.dumps({
+        'subscription_id': subscription_id, 'owner_id': 999999, 'object_id': 501,
+        'object_type': 'activity', 'aspect_type': 'create', 'updates': {}}).encode(),
+        headers={'Content-Type': 'application/json'})
+    try:
+        response = urllib.request.urlopen(request, timeout=10)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        return response.status
+check(webhook(999) == 403, 'webhooks reject a different subscription')
+check(webhook(123) == 200, 'webhooks safely acknowledge unknown athletes without importing data')
 print('All integration checks passed.')

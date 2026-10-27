@@ -18,7 +18,6 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 var clientId = builder.Configuration["Strava:ClientId"];
 var clientSecret = builder.Configuration["Strava:ClientSecret"];
-var verifyToken = builder.Configuration["Strava:WebhookVerifyToken"];
 
 builder.Services.AddRazorComponents();
 builder.Services.AddDataProtection().SetApplicationName("ActivityTracker");
@@ -34,6 +33,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options => {
 });
 builder.Services.AddDbContextFactory<TrackerDb>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddHttpClient("strava", c => c.BaseAddress = new Uri("https://www.strava.com/"));
+builder.Services.AddSingleton<StravaRateGate>();
+builder.Services.AddSingleton<StravaApi>();
+builder.Services.AddHostedService<StravaSyncWorker>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
     o.Cookie.Name = ".ActivityTracker.Auth.v2";
     o.LoginPath = "/login";
@@ -49,6 +51,14 @@ builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy =
     policy.RequireAuthenticatedUser().RequireAssertion(context => Accounts.IsAdmin(context.User, builder.Configuration))));
 builder.Services.AddRateLimiter(options => {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("strava-sync", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous", _ => new FixedWindowRateLimiterOptions {
+            PermitLimit = 2, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
+    options.AddPolicy("strava-webhook", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions {
+            PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
     options.AddPolicy("accounts", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions {
             PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
@@ -83,13 +93,14 @@ app.MapGet("/auth/strava/start", (HttpContext ctx, IConfiguration config) => {
     var url = $"https://www.strava.com/oauth/authorize?client_id={Uri.EscapeDataString(id)}&response_type=code&redirect_uri={Uri.EscapeDataString(redirect)}&approval_prompt=auto&scope=read,activity:read&state={state}";
     return Results.Redirect(url);
 });
-app.MapGet("/auth/strava/callback", async (HttpContext ctx, string? code, string? state, string? error, IConfiguration config, IHttpClientFactory httpFactory, IDbContextFactory<TrackerDb> factory, IDataProtectionProvider protection) => {
+app.MapGet("/auth/strava/callback", async (HttpContext ctx, string? code, string? state, string? error, string? scope, IConfiguration config, IHttpClientFactory httpFactory, IDbContextFactory<TrackerDb> factory, IDataProtectionProvider protection) => {
     if (error is not null) return Results.BadRequest("Strava authorization declined: " + error);
     var cookieState = ctx.Request.Cookies["strava_oauth_state"];
     ctx.Response.Cookies.Delete("strava_oauth_state");
     if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state) || string.IsNullOrEmpty(cookieState) ||
         !CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(state), System.Text.Encoding.UTF8.GetBytes(cookieState)))
         return Results.BadRequest("Invalid OAuth state or authorization code.");
+    if (!StravaEndpoints.HasActivityScope(scope)) return Results.Redirect("/login?error=strava-scope");
     var client = httpFactory.CreateClient("strava");
     var response = await client.PostAsync("oauth/token", new FormUrlEncodedContent(new Dictionary<string,string> {
         ["client_id"] = config["Strava:ClientId"] ?? "",
@@ -106,16 +117,23 @@ app.MapGet("/auth/strava/callback", async (HttpContext ctx, string? code, string
     await using var db = await factory.CreateDbContextAsync();
     var person = await db.Participants.SingleOrDefaultAsync(p => p.StravaAthleteId == athleteId);
     if (person is null) { person = new Participant { StravaAthleteId = athleteId }; db.Participants.Add(person); }
-    person.DisplayName = ($"{first} {last}").Trim();
     var protector = protection.CreateProtector("StravaTokens.v1");
-    person.AccessToken = protector.Protect(root.GetProperty("access_token").GetString()!);
-    person.RefreshToken = protector.Protect(root.GetProperty("refresh_token").GetString()!);
-    person.TokenExpiresAt = DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("expires_at").GetInt64());
-    await db.SaveChangesAsync();
+    for (var attempt = 0; ; attempt++) {
+        person.DisplayName = ($"{first} {last}").Trim();
+        person.AccessToken = protector.Protect(root.GetProperty("access_token").GetString()!);
+        person.RefreshToken = protector.Protect(root.GetProperty("refresh_token").GetString()!);
+        person.TokenExpiresAt = DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("expires_at").GetInt64());
+        person.StravaActivityReadGranted = true;
+        person.StravaSyncStatus = "pending";
+        try { await db.SaveChangesAsync(); break; }
+        catch (DbUpdateConcurrencyException) when (attempt < 2) { await db.Entry(person).ReloadAsync(); }
+    }
+    await StravaQueue.EnqueueAsync(db, person.Id);
     await Accounts.SignInAsync(ctx, person);
     return Results.Redirect("/");
 });
 app.MapAccounts();
+app.MapStravaSync();
 app.MapLeaderboards();
 app.MapRazorComponents<App>();
 
