@@ -1,2 +1,21 @@
 @inherits LayoutComponentBase
-<div class="shell"><header><a href="/" class="brand">◉ Activity Tracker</a><nav><a href="/">Leaderboard</a><a href="/auth/strava/start">Connect Strava</a></nav></header><main>@Body</main><footer>Morning Challenge · Consistency beats intensity</footer></div>
+<div class="shell">
+    <header>
+        <a href="/" class="brand">◉ Activity Tracker</a>
+        <nav aria-label="Main navigation">
+            <a href="/">Leaderboards</a>
+            @if (Context?.User.Identity?.IsAuthenticated == true) {
+                <a href="/leaderboards/new">Create leaderboard</a>
+                <a href="/login">@Context.User.Identity.Name</a>
+                <form method="post" action="/auth/logout"><AntiforgeryToken /><button class="link-button" type="submit">Log out</button></form>
+            } else {
+                <a href="/login">Log in</a>
+            }
+        </nav>
+    </header>
+    <main>@Body</main>
+    <footer>Public leaderboards · Move together, build the habit</footer>
+</div>
+@code {
+    [CascadingParameter] public HttpContext? Context { get; set; }
+}

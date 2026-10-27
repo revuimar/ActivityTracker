@@ -1,0 +1,34 @@
+@page "/leaderboards/new"
+@page "/leaderboards/{Id:int}/edit"
+@inject IDbContextFactory<TrackerDb> DbFactory
+<h1>@(Id == 0 ? "Create leaderboard" : "Edit leaderboard")</h1>
+@if (Context?.User.Identity?.IsAuthenticated != true) {
+    <p>Any signed-in user can create or edit a leaderboard.</p><a class="button" href="/login">Log in to continue</a>
+} else if (Board is null) { <p>Leaderboard not found.</p> }
+else {
+    <p class="muted">This leaderboard is public. All accounts are included automatically; only the app administrator can change participants.</p>
+    <section><form method="post" action="/leaderboards/save">
+        <AntiforgeryToken /><input type="hidden" name="id" value="@Board.Id" />
+        <label>Name<input name="name" value="@Board.Name" maxlength="100" required /></label>
+        <label>Description<textarea name="description" maxlength="1000" rows="3">@Board.Description</textarea></label>
+        <div class="board-grid">
+            <label>Start date<input name="startsOn" type="date" value="@Board.StartsOn.ToString("yyyy-MM-dd")" required /></label>
+            <label>End date<input name="endsOn" type="date" value="@Board.EndsOn.ToString("yyyy-MM-dd")" required /></label>
+            <label>Daily finish cutoff<input name="cutoff" type="time" value="@Board.Cutoff.ToString("HH:mm")" required /></label>
+            <label>Minimum workout (minutes)<input name="minimumMinutes" type="number" min="15" max="1440" value="@Board.MinimumMinutes" required /></label>
+        </div>
+        <div class="actions"><button type="submit">Save leaderboard</button><a href="/">Cancel</a></div>
+    </form></section>
+}
+@code {
+    [Parameter] public int Id { get; set; }
+    [CascadingParameter] public HttpContext? Context { get; set; }
+    private Challenge? Board;
+    protected override async Task OnParametersSetAsync() {
+        if (Context?.User.Identity?.IsAuthenticated != true) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        Board = Id == 0 ? new Challenge { StartsOn = DateOnly.FromDateTime(DateTime.Today), EndsOn = DateOnly.FromDateTime(DateTime.Today).AddYears(1) }
+            : await db.Challenges.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Id);
+        if (Board is null && Context is not null) Context.Response.StatusCode = 404;
+    }
+}

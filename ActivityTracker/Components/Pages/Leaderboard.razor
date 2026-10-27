@@ -1,0 +1,56 @@
+@page "/leaderboards/{Id:int}"
+@inject IDbContextFactory<TrackerDb> DbFactory
+@inject IConfiguration Config
+@if (Board is null) { <h1>Leaderboard not found</h1><a href="/">Browse leaderboards</a> }
+else {
+    <a href="/">← All leaderboards</a>
+    <h1>@Board.Name</h1><p>@Board.Description</p>
+    <p class="muted">@Board.StartsOn.ToString("dd MMM yyyy") – @Board.EndsOn.ToString("dd MMM yyyy")</p>
+    <div class="actions">
+        @if (Context?.User.Identity?.IsAuthenticated == true) {
+            <a class="button" href="/leaderboards/@Id/edit">Edit leaderboard</a>
+        } else { <a href="/login">Log in to edit or appear in the rankings</a> }
+        @if (Context is not null && Accounts.IsAdmin(Context.User, Config)) {
+            <a href="/leaderboards/@Id/members">Manage participants</a>
+        }
+    </div>
+    <div class="stats">
+        <div class="tile"><span>Minimum workout</span><strong>@Board.MinimumMinutes min</strong></div>
+        <div class="tile"><span>5 / 6 / 7 mornings</span><strong>+5 / +10 / +15</strong></div>
+        <div class="tile"><span>Morning cutoff</span><strong>@Board.Cutoff.ToString("HH:mm")</strong></div>
+    </div>
+    <section>
+        <div class="section-head"><h2>Weekly leaderboard</h2><span class="muted">@Monday.ToString("dd MMM") – @Monday.AddDays(6).ToString("dd MMM yyyy")</span></div>
+        @if (Rows.Count == 0) { <p class="muted">No participants yet. Log in to join.</p> }
+        else {
+            <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Athlete</th><th>Mornings</th><th>Workout</th><th>Bonus</th><th>Total</th></tr></thead>
+                <tbody>@for (var i = 0; i < Rows.Count; i++) {
+                    var row = Rows[i];
+                    <tr><td>@(i + 1)</td><td><b>@row.Name</b></td><td>@row.ActiveDays / 7</td><td>@row.WorkoutPoints</td><td>+@row.Bonus</td><td><strong>@row.Total</strong></td></tr>
+                }</tbody></table></div>
+        }
+    </section>
+    <section><h2>How scoring works</h2><p>Qualifying workouts earn 5 points below 30 minutes, 6 points at 30–44 minutes, or 7 points at 45+ minutes. Only the best qualifying activity per day counts. Workouts must finish on the same day by @Board.Cutoff.ToString("HH:mm"), meet the @Board.MinimumMinutes-minute minimum, and fall within the leaderboard dates.</p><p>Every account appears automatically, unless the app administrator removes it. Accounts without workouts show zero points. Activity import from Strava is still being built.</p></section>
+}
+@code {
+    [Parameter] public int Id { get; set; }
+    [CascadingParameter] public HttpContext? Context { get; set; }
+    private Challenge? Board;
+    private List<ScoreRow> Rows = [];
+    private DateOnly Monday;
+    protected override async Task OnParametersSetAsync() {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        Board = await db.Challenges.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Id);
+        if (Board is null) { if (Context is not null) Context.Response.StatusCode = 404; return; }
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw")));
+        Monday = today.AddDays(-((int)today.DayOfWeek + 6) % 7);
+        var start = Monday.ToDateTime(TimeOnly.MinValue);
+        var end = start.AddDays(7);
+        var people = await db.Participants.AsNoTracking()
+            .Where(p => !db.LeaderboardExclusions.Any(e => e.ChallengeId == Id && e.ParticipantId == p.Id))
+            .Select(p => new Participant { Id = p.Id, DisplayName = p.DisplayName,
+                Activities = p.Activities.Where(a => a.StartLocal >= start && a.StartLocal < end).ToList() })
+            .ToListAsync();
+        Rows = Scoring.Weekly(people, Monday, Board.Cutoff, Board.MinimumMinutes, Board.StartsOn, Board.EndsOn);
+    }
+}

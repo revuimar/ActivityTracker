@@ -32,9 +32,19 @@ jobs:
           POSTGRES_PASSWORD: ci-only-disposable-database-password
           ALLOWED_HOSTS: localhost;127.0.0.1
         run: |
+          docker compose --env-file /dev/null -f compose.production.yml up -d --wait --wait-timeout 180 db
+          docker compose --env-file /dev/null -f compose.production.yml exec -T db psql -v ON_ERROR_STOP=1 -U tracker activitytracker < tests/starter-schema.sql
           docker compose --env-file /dev/null -f compose.production.yml up -d --wait --wait-timeout 180
           curl --fail --retry 5 --retry-delay 2 http://127.0.0.1:8080/health
           curl --fail http://127.0.0.1:8080/ | grep -q 'Morning Challenge'
+      - name: Test accounts, permissions and participant management
+        env:
+          APP_IMAGE: activitytracker:ci
+          POSTGRES_PASSWORD: ci-only-disposable-database-password
+          ALLOWED_HOSTS: localhost;127.0.0.1
+        run: |
+          docker compose --env-file /dev/null -f compose.production.yml -f tests/compose.integration.yml up -d --wait --wait-timeout 180
+          python3 tests/integration.py
       - name: Remove disposable smoke test database
         if: always()
         env:
@@ -118,5 +128,5 @@ jobs:
           destination="$SSH_USER@$SSH_HOST"
           remote="/opt/activitytracker/releases/$RELEASE"
           ssh "${opts[@]}" -p "$SSH_PORT" "$destination" "mkdir -p '$remote'"
-          scp "${opts[@]}" -P "$SSH_PORT" compose.production.yml deploy/deploy.sh "$destination:$remote/"
+          scp "${opts[@]}" -P "$SSH_PORT" compose.production.yml deploy/deploy.sh deploy/schema-version "$destination:$remote/"
           ssh "${opts[@]}" -p "$SSH_PORT" "$destination" "bash '$remote/deploy.sh' '$RELEASE' '$APP_IMAGE'"

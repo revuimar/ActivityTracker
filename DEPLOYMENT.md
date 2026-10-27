@@ -126,7 +126,7 @@ APP_IMAGE=$(cat current/image) docker compose --env-file shared/.env -f current/
 curl --fail http://127.0.0.1:8080/health
 ```
 
-Failed health checks restore the previous image/configuration when available. A first deployment has no rollback target. Automatic rollback never reverses database schema/data changes. The starter uses EnsureCreated for initial schema creation, which does not migrate an existing schema: introduce reviewed EF migrations before schema changes.
+Failed health checks restore the previous image/configuration when available. A first deployment has no rollback target. Automatic rollback never reverses database schema/data changes. This version includes a transactional, additive upgrade from the original starter schema: it preserves existing participants and activities, adds local credentials and per-board exclusions, and seeds a default board when none exists. Rollback to the older image is unsafe after creating email accounts because the older model requires every account to have a Strava ID; back up first and use a forward fix rather than automatically restoring an incompatible older image. Later schema changes should use reviewed EF migrations. Existing browser sessions must log in again because the authentication cookie now uses internal account IDs.
 
 Back up PostgreSQL AND the protection_keys volume before upgrades. The latter contains the keys needed to decrypt OAuth tokens and login cookies. Keys are protected by server filesystem/volume access, not by an external key-management service. Encrypt backups and keep them off the VPS. Example database backup as deploy:
 
@@ -140,3 +140,11 @@ APP_IMAGE=$(cat current/image) docker compose --env-file shared/.env -f current/
 Test restore to an isolated database. Never run `down --volumes` in production. Old release directories/images are retained for rollback; monitor disk space and remove obsolete releases deliberately.
 
 Strava activity import, refresh, webhooks, and consent/revocation remain unfinished starter features. Stored tokens now use Data Protection; future import code must unprotect them using purpose StravaTokens.v1. Existing plaintext tokens from an older install need an explicit migration or reauthorization. This starter ZIP has no prior production database.
+
+## Leaderboard administrator and test accounts
+
+All boards are public and all signed-in users may create or edit board details. Only one server-configured administrator can change per-board participants. Sign in, open `/login`, and note your numeric account ID. Add `ADMIN_PARTICIPANT_ID=YOUR_NUMERIC_ID` to `/opt/activitytracker/shared/.env`. Default 0 grants nobody administrator permissions. Do not grant admin based on an unverified email address.
+
+For email/password testing behind HTTPS, add `TEST_LOGIN_ENABLED=true` to the same server file and redeploy. Accounts require 12–128 character passwords, stored as salted Identity password hashes. Authentication forms validate antiforgery tokens and are rate limited. Emails are private; display names are public. These test accounts have no verification or recovery flow and do not automatically link to Strava accounts. Production HTTP requests cannot submit credentials; local Development supports HTTP testing. Never deploy `tests/compose.integration.yml`: its settings are for disposable CI only.
+
+After changing server settings, rerun the workflow. Keep production HTTPS and the trusted proxy configured before testing authentication.

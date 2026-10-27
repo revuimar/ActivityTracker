@@ -1,0 +1,7 @@
+# CI-only settings: never include this override in a VPS deployment.
+services:
+  app:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      TestLogin__Enabled: 'true'
+      Admin__ParticipantId: '2'

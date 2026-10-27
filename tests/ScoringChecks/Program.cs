@@ -20,3 +20,10 @@ Check("week boundaries", [Workout(-1,30), Workout(7,30)],0,0,0);
 foreach (var (days, bonus) in new[] { (5,5), (6,10), (7,15) })
     Check($"{days} day bonus", Enumerable.Range(0,days).Select(d=>Workout(d,15)),days,days*5,bonus);
 Console.WriteLine("All scoring checks passed.");
+
+var zero = Scoring.Weekly([new Participant { DisplayName = "No workouts" }], monday, new TimeOnly(11,0)).Single();
+if (zero.Total != 0 || zero.ActiveDays != 0) throw new Exception("Accounts without workouts must appear at zero.");
+var filtered = new Participant { Activities = [Workout(0,15), Workout(1,30), Workout(2,45)] };
+var custom = Scoring.Weekly([filtered], monday, new TimeOnly(11,0), 30, monday.AddDays(2), monday.AddDays(6)).Single();
+if (custom.ActiveDays != 1 || custom.WorkoutPoints != 7) throw new Exception("Leaderboard dates/minimum must apply.");
+Console.WriteLine("PASS zero-score accounts and leaderboard date/duration rules");
