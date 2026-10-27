@@ -46,13 +46,24 @@ Check(StravaEndpoints.HasActivityScope("read,activity:read") && StravaEndpoints.
     !StravaEndpoints.HasActivityScope("read,activity:write"), "activity permission required explicitly");
 var now = new DateTimeOffset(2026, 10, 27, 10, 7, 0, TimeSpan.Zero);
 using (var response = Json("{}", HttpStatusCode.TooManyRequests)) {
-    response.Headers.Add("X-ReadRateLimit-Limit", "100,1000");
-    response.Headers.Add("X-ReadRateLimit-Usage", "100,200");
+    response.Headers.Add("X-RateLimit-Limit", "400,4000");
+    response.Headers.Add("X-RateLimit-Usage", "200,500");
+    response.Headers.Add("X-ReadRateLimit-Limit", "200,2000");
+    response.Headers.Add("X-ReadRateLimit-Usage", "200,500");
     Check(StravaRateGate.RateDelay(response, now) == TimeSpan.FromMinutes(8).Add(TimeSpan.FromSeconds(2)), "15-minute rate reset honored");
     response.Headers.Remove("X-ReadRateLimit-Usage");
-    response.Headers.Add("X-ReadRateLimit-Usage", "1,1000");
+    response.Headers.Add("X-ReadRateLimit-Usage", "1,2000");
     Check(StravaRateGate.RateDelay(response, now) == now.UtcDateTime.Date.AddDays(1).Subtract(now.UtcDateTime).Add(TimeSpan.FromSeconds(2)),
         "daily rate reset honored");
+    response.Headers.Remove("X-ReadRateLimit-Usage");
+    response.Headers.Add("X-ReadRateLimit-Usage", "1,1");
+    response.Headers.Remove("X-RateLimit-Usage");
+    response.Headers.Add("X-RateLimit-Usage", "400,500");
+    Check(StravaRateGate.RateDelay(response, now) == TimeSpan.FromMinutes(8).Add(TimeSpan.FromSeconds(2)),
+        "overall limit also pauses sync even when read quota remains");
+    response.Headers.Remove("X-RateLimit-Usage");
+    response.Headers.Add("X-RateLimit-Usage", "1,4000");
+    Check(StravaRateGate.RateDelay(response, now) > TimeSpan.FromHours(13), "overall daily limit honored independently of reads");
 }
 var saved = false;
 var person = Person();

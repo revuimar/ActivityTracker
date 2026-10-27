@@ -2,6 +2,8 @@
 
 ## Enable Strava activity sync after deploying this version
 
+This application's configured Strava quotas are **400 requests per 15 minutes / 4,000 per day overall**, and **200 requests per 15 minutes / 2,000 per day for reads** (confirmed 27 October 2026). These are shared across all connected athletes. Activity fetches consume both buckets. The worker checks both `X-RateLimit-*` and `X-ReadRateLimit-*` response headers and pauses until the applicable reset whenever either quota is exhausted. The headers remain authoritative if Strava changes the allocation. Pagination uses up to 200 activities per request; webhook HTTP deliveries themselves do not consume an outgoing Strava API request.
+
 Keep the Strava application's **Authorization Callback Domain** set to your hostname only, e.g. `aktywnosci.byst.re`. OAuth continues to use `https://aktywnosci.byst.re/auth/strava/callback`. The webhook has a separate URL: `https://aktywnosci.byst.re/webhooks/strava`.
 
 1. On the VPS, generate a verification token with `openssl rand -hex 32`. Add it to `/opt/activitytracker/shared/.env` as `STRAVA_WEBHOOK_VERIFY_TOKEN=...`. Set `STRAVA_WEBHOOK_SUBSCRIPTION_ID=0` for initial registration. Keep the existing client ID, client secret, HTTPS redirect URI and trusted proxy settings. Optional: `STRAVA_IMPORT_DAYS=90` controls recent-history imports (7–365 days).
