@@ -4,7 +4,7 @@ COPY ActivityTracker.csproj ./
 RUN dotnet restore
 COPY . .
 RUN dotnet publish -c Release -o /out --no-restore
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir /keys && chown app:app /keys
