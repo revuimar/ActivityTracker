@@ -11,7 +11,7 @@ else {
     <section><div class="table-wrap"><table><thead><tr><th>Participant</th><th>Status</th><th>Action</th></tr></thead><tbody>
     @foreach (var member in People) {
         <tr><td>@member.Name</td><td>@(member.Included ? "Included" : "Removed")</td><td>
-            <form method="post" action="/leaderboards/@Id/members"><AntiforgeryToken />
+            <form method="post" action="/leaderboards/@Id/members/update"><AntiforgeryToken />
                 <input type="hidden" name="participantId" value="@member.Id" />
                 <input type="hidden" name="action" value="@(member.Included ? "exclude" : "include")" />
                 <button type="submit">@(member.Included ? "Remove" : "Restore")</button>

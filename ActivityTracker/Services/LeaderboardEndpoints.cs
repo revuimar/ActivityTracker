@@ -32,7 +32,7 @@ public static class LeaderboardEndpoints
             return Results.Redirect($"/leaderboards/{board.Id}");
         }).RequireAuthorization();
 
-        app.MapPost("/leaderboards/{id:int}/members", async (int id, HttpContext ctx, IAntiforgery csrf, IDbContextFactory<TrackerDb> factory) => {
+        app.MapPost("/leaderboards/{id:int}/members/update", async (int id, HttpContext ctx, IAntiforgery csrf, IDbContextFactory<TrackerDb> factory) => {
             try { await csrf.ValidateRequestAsync(ctx); }
             catch (AntiforgeryValidationException) { return Results.BadRequest("Invalid form token. Reload the page."); }
             var form = await ctx.Request.ReadFormAsync();

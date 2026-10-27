@@ -50,18 +50,18 @@ anon, admin, member, newcomer = (Browser() for _ in range(4))
 status, text, _ = anon.request('/leaderboards/1')
 check(status == 200 and 'Original athlete' in text, 'public board retains original starter participant')
 check(anon.request('/leaderboards/save', {})[0] == 302, 'anonymous edits rejected')
-check(anon.request('/leaderboards/1/members', {})[0] == 302, 'anonymous membership changes rejected')
+check(anon.request('/leaderboards/1/members/update', {})[0] == 302, 'anonymous membership changes rejected')
 register(admin, 'admin@example.test', 'Alice Admin')
 register(member, 'member@example.test', 'Bob Member')
 status, text, _ = anon.request('/leaderboards/1')
 check(status == 200 and 'Alice Admin' in text and 'Bob Member' in text, 'all accounts appear publicly without workouts')
 check('admin@example.test' not in text and 'member@example.test' not in text, 'emails stay private')
 check(member.request('/leaderboards/1/members')[0] == 403, 'membership screen restricted to administrator')
-check(member.request('/leaderboards/1/members', {'participantId': '2', 'action': 'exclude'})[0] == 302,
+check(member.request('/leaderboards/1/members/update', {'participantId': '2', 'action': 'exclude'})[0] == 302,
       'non-admin membership POST rejected')
 check(member.request('/leaderboards/save', {'id': '1', 'name': 'CSRF attack'})[0] == 400,
       'edits require valid antiforgery token')
-check(admin.request('/leaderboards/1/members', {'participantId': '3', 'action': 'exclude'})[0] == 400,
+check(admin.request('/leaderboards/1/members/update', {'participantId': '3', 'action': 'exclude'})[0] == 400,
       'administrator membership changes also require antiforgery')
 
 board = {'id': '0', 'name': 'Community Challenge', 'description': 'Created by a member',
@@ -77,7 +77,7 @@ status, _, _ = admin.post(board_url + '/edit', '/leaderboards/save', board)
 check(status == 302 and 'Edited by another user' in anon.request(board_url)[1], 'another signed-in user can edit the board')
 
 for attempt in range(2):
-    status, _, _ = admin.post('/leaderboards/1/members', '/leaderboards/1/members',
+    status, _, _ = admin.post('/leaderboards/1/members', '/leaderboards/1/members/update',
                               {'participantId': '3', 'action': 'exclude'})
     check(status == 302, 'administrator removal is idempotent')
 check('Bob Member' not in anon.request('/leaderboards/1')[1], 'removed participant disappears publicly')
@@ -88,7 +88,7 @@ check('Bob Member' not in anon.request('/leaderboards/1')[1], 'logging back in d
 register(newcomer, 'new@example.test', 'Charlie New')
 check(all('Charlie New' in anon.request(url)[1] for url in ['/leaderboards/1', board_url]),
       'new account appears on every existing board')
-status, _, _ = admin.post('/leaderboards/1/members', '/leaderboards/1/members',
+status, _, _ = admin.post('/leaderboards/1/members', '/leaderboards/1/members/update',
                           {'participantId': '3', 'action': 'include'})
 check(status == 302 and 'Bob Member' in anon.request('/leaderboards/1')[1], 'administrator restores participant')
 invalid_board = dict(board, endsOn='2019-01-01')
