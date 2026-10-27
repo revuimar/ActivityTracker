@@ -1,7 +1,7 @@
 # GitHub → GHCR → Ubuntu VPS
 
 Repository: https://github.com/revuimar/ActivityTracker
-Server: sandra335.mikrus.xyz, SSH port 10335, Ubuntu 24.04.
+Server: vps.example.com, SSH port 10335, Ubuntu 24.04.
 
 ## What happens automatically
 
@@ -52,17 +52,17 @@ cat ~/.ssh/activitytracker_actions.pub
 Copy that PUBLIC key line into `/home/deploy/.ssh/authorized_keys` on the VPS, prefixed with `restrict ` (a space after restrict). This allows remote commands and file copying while blocking forwarding and PTY access. Keep your existing root SSH session open. Confirm from the Mac:
 
 ```sh
-ssh -i ~/.ssh/activitytracker_actions -p 10335 deploy@sandra335.mikrus.xyz 'docker compose version'
+ssh -i ~/.ssh/activitytracker_actions -p 10335 deploy@vps.example.com 'docker compose version'
 ```
 
 On the VPS, obtain the server host key through your authenticated root session:
 
 ```sh
-printf '[sandra335.mikrus.xyz]:10335 '
+printf '[vps.example.com]:10335 '
 cut -d ' ' -f 1,2 /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-The output should be ONE line like `[sandra335.mikrus.xyz]:10335 ssh-ed25519 AAAA...`. This is the SSH_KNOWN_HOSTS value. Do not obtain trust by blindly accepting ssh-keyscan results.
+The output should be ONE line like `[vps.example.com]:10335 ssh-ed25519 AAAA...`. This is the SSH_KNOWN_HOSTS value. Do not obtain trust by blindly accepting ssh-keyscan results.
 
 ## 4. Server-only configuration
 
@@ -89,7 +89,7 @@ Add your actual domain to ALLOWED_HOSTS (semicolon separated); retain localhost 
 Default access for a private preview is an SSH tunnel from your Mac:
 
 ```sh
-ssh -p 10335 -L 8080:127.0.0.1:8080 root@sandra335.mikrus.xyz
+ssh -p 10335 -L 8080:127.0.0.1:8080 root@vps.example.com
 ```
 
 Then browse http://localhost:8080 after the first deployment. Public exposure requires your assigned Mikrus web routing or your own HTTPS reverse proxy. Keep PostgreSQL unexposed. If a local reverse proxy connects through Docker's host gateway, inspect the app network gateway and configure that exact address as TRUSTED_PROXY_IP; the app trusts no arbitrary forwarded headers. Configure the proxy to overwrite forwarding headers and send X-Forwarded-Proto=https. Set STRAVA_REDIRECT_URI to your final HTTPS callback and configure that domain in Strava. Do not enable OAuth over public HTTP.
@@ -109,7 +109,7 @@ In repository Settings → Secrets and variables → Actions → Variables, add:
 
 | Repository variable | Value |
 | --- | --- |
-| SSH_HOST | sandra335.mikrus.xyz |
+| SSH_HOST | vps.example.com |
 | SSH_PORT | 10335 |
 | SSH_USER | deploy |
 | DEPLOY_ENABLED | true, only after all setup is complete |
