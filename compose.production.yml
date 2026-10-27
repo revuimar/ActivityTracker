@@ -15,6 +15,8 @@ services:
       Strava__ClientId: ${STRAVA_CLIENT_ID:-}
       Strava__ClientSecret: ${STRAVA_CLIENT_SECRET:-}
       Strava__RedirectUri: ${STRAVA_REDIRECT_URI:-}
+      TestLogin__Enabled: ${TEST_LOGIN_ENABLED:-false}
+      Admin__ParticipantId: ${ADMIN_PARTICIPANT_ID:-0}
       TZ: Europe/Warsaw
     volumes:
       - protection_keys:/keys

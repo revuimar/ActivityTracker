@@ -1,0 +1,34 @@
+@page "/login"
+@inject IConfiguration Config
+@inject IWebHostEnvironment Environment
+<h1>Log in</h1>
+@if (Context?.User.Identity?.IsAuthenticated == true) {
+    <section><h2>Signed in as @Context.User.Identity.Name</h2><p>Your account ID: <strong>@Context.User.FindFirstValue(ClaimTypes.NameIdentifier)</strong></p><p>Your account appears on every leaderboard unless the administrator removes it.</p><a href="/">Browse leaderboards</a></section>
+} else {
+    @if (!string.IsNullOrWhiteSpace(Error)) {
+        <p class="notice" role="alert">@(Error == "login" ? "Email or password was not accepted." : "Could not create account. Check the fields, or try logging in if you already registered.")</p>
+    }
+    <section><h2>Use Strava</h2><p>Connect your Strava account to join all leaderboards.</p><a class="button" href="/auth/strava/start">Continue with Strava</a></section>
+    @if (Accounts.TestLoginEnabled(Config, Environment)) {
+        <div class="board-grid">
+            <section><h2>Email login for testing</h2><form method="post" action="/auth/login">
+                <AntiforgeryToken />
+                <label>Email<input type="email" name="email" autocomplete="username" maxlength="254" required /></label>
+                <label>Password<input type="password" name="password" autocomplete="current-password" maxlength="128" required /></label>
+                <button type="submit">Log in</button>
+            </form></section>
+            <section><h2>Create a test account</h2><form method="post" action="/auth/register">
+                <AntiforgeryToken />
+                <label>Public display name<input name="name" autocomplete="nickname" maxlength="80" required /></label>
+                <label>Email<input type="email" name="email" autocomplete="username" maxlength="254" required /></label>
+                <label>Password<input type="password" name="password" autocomplete="new-password" minlength="12" maxlength="128" required /></label>
+                <p class="muted">Use 12–128 characters. Your display name will be public on every leaderboard. Emails are not shown. These are test accounts without email verification or password recovery.</p>
+                <button type="submit">Create account</button>
+            </form></section>
+        </div>
+    } else { <p class="muted">Email/password testing is currently disabled.</p> }
+}
+@code {
+    [CascadingParameter] public HttpContext? Context { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string? Error { get; set; }
+}

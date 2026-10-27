@@ -1,0 +1,40 @@
+@page "/leaderboards/{Id:int}/members"
+@inject IDbContextFactory<TrackerDb> DbFactory
+@inject IConfiguration Config
+<h1>Manage participants</h1>
+@if (Context is null || !Accounts.IsAdmin(Context.User, Config)) {
+    <p>Only the app administrator can add or remove participants.</p><a href="/login">Account details</a>
+} else if (Board is null) { <p>Leaderboard not found.</p> }
+else {
+    <a href="/leaderboards/@Id">← @Board.Name</a>
+    <p>New accounts appear automatically. Removing someone here hides them only from this leaderboard and does not delete their account or workouts.</p>
+    <section><div class="table-wrap"><table><thead><tr><th>Participant</th><th>Status</th><th>Action</th></tr></thead><tbody>
+    @foreach (var member in People) {
+        <tr><td>@member.Name</td><td>@(member.Included ? "Included" : "Removed")</td><td>
+            <form method="post" action="/leaderboards/@Id/members/update"><AntiforgeryToken />
+                <input type="hidden" name="participantId" value="@member.Id" />
+                <input type="hidden" name="action" value="@(member.Included ? "exclude" : "include")" />
+                <button type="submit">@(member.Included ? "Remove" : "Restore")</button>
+            </form>
+        </td></tr>
+    }
+    </tbody></table></div></section>
+}
+@code {
+    [Parameter] public int Id { get; set; }
+    [CascadingParameter] public HttpContext? Context { get; set; }
+    private Challenge? Board;
+    private List<MemberRow> People = [];
+    private record MemberRow(int Id, string Name, bool Included);
+    protected override async Task OnParametersSetAsync() {
+        if (Context is null || !Accounts.IsAdmin(Context.User, Config)) {
+            if (Context is not null) Context.Response.StatusCode = 403;
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        Board = await db.Challenges.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Id);
+        if (Board is null) { Context.Response.StatusCode = 404; return; }
+        People = await db.Participants.AsNoTracking().OrderBy(p => p.DisplayName)
+            .Select(p => new MemberRow(p.Id, p.DisplayName, !db.LeaderboardExclusions.Any(e => e.ChallengeId == Id && e.ParticipantId == p.Id))).ToListAsync();
+    }
+}

@@ -1,3 +1,6 @@
+using ActivityTracker.Services;
+using Microsoft.AspNetCore.Identity;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
@@ -28,16 +31,31 @@ builder.Services.Configure<ForwardedHeadersOptions>(options => {
 builder.Services.AddDbContextFactory<TrackerDb>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddHttpClient("strava", c => c.BaseAddress = new Uri("https://www.strava.com/"));
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
+    o.Cookie.Name = ".ActivityTracker.Auth.v2";
+    o.LoginPath = "/login";
+    o.AccessDeniedPath = "/access-denied";
+    o.ExpireTimeSpan = TimeSpan.FromHours(8);
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Lax;
     o.Cookie.SecurePolicy = builder.Environment.IsProduction() ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
 });
-builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IPasswordHasher<Participant>, PasswordHasher<Participant>>();
+builder.Services.AddSingleton<DummyPassword>();
+builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy =>
+    policy.RequireAuthenticatedUser().RequireAssertion(context => Accounts.IsAdmin(context.User, builder.Configuration))));
+builder.Services.AddRateLimiter(options => {
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("accounts", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions {
+            PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
+});
 var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.MapGet("/health", async (IDbContextFactory<TrackerDb> factory) => {
@@ -90,17 +108,18 @@ app.MapGet("/auth/strava/callback", async (HttpContext ctx, string? code, string
     person.RefreshToken = protector.Protect(root.GetProperty("refresh_token").GetString()!);
     person.TokenExpiresAt = DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("expires_at").GetInt64());
     await db.SaveChangesAsync();
-    var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, athleteId.ToString()), new Claim(ClaimTypes.Name, person.DisplayName) }, CookieAuthenticationDefaults.AuthenticationScheme);
-    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    await Accounts.SignInAsync(ctx, person);
     return Results.Redirect("/");
 });
+app.MapAccounts();
+app.MapLeaderboards();
 app.MapRazorComponents<App>();
 
-// MVP bootstrap: creates the schema on first run. Replace with EF migrations before evolving production data.
+// Bootstrap plus an additive upgrade for the original starter database.
 using (var scope = app.Services.CreateScope()) {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<TrackerDb>>();
     for (int attempt=0; attempt<15; attempt++) {
-        try { await using var db = await factory.CreateDbContextAsync(); await db.Database.EnsureCreatedAsync(); break; }
+        try { await using var db = await factory.CreateDbContextAsync(); await SchemaUpgrade.ApplyAsync(db); break; }
         catch (Npgsql.NpgsqlException) when (attempt < 14) { await Task.Delay(2000); }
     }
 }

@@ -19,6 +19,14 @@ Open http://localhost:8080. Health endpoint: http://localhost:8080/health.
 
 For Strava OAuth, register your app at https://www.strava.com/settings/api and configure its callback domain. The redirect URI in `.env` must exactly match your deployed callback URL. On a VPS, put Caddy/another HTTPS reverse proxy in front of the app and change STRAVA_REDIRECT_URI to `https://your-domain/auth/strava/callback`. Do not expose the PostgreSQL port.
 
+## Leaderboard access
+
+- Every leaderboard is public. Any signed-in user can create or edit its name, description, dates and workout rules.
+- All accounts, including email/password test accounts without activities, appear on every board automatically with zero points initially.
+- Only the app administrator can remove or restore a participant per board. Removal persists across subsequent logins and does not delete the account or activities.
+- Strava login uses OAuth. Email/password registration and login are available in local Development; enable `TEST_LOGIN_ENABLED=true` for HTTPS production testing. No shared/default password exists. Test accounts have no email verification or password recovery; they remain separate from Strava accounts.
+- After logging in, open `/login` to see your numeric account ID. Set `ADMIN_PARTICIPANT_ID` to your own ID in the **server-only** `.env`, then redeploy. No administrator is assigned automatically.
+
 ## Implemented
 
 - Strava OAuth authorization-code flow, CSRF state verification, token exchange and participant upsert.

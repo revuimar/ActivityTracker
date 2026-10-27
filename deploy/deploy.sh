@@ -21,13 +21,15 @@ compose=(docker compose --project-name activitytracker --env-file "$root/shared/
 previous=$(readlink "$root/current" || true)
 if ! "${compose[@]}" up -d --wait --wait-timeout 180; then
     echo 'Deployment unhealthy.'
-    if [[ -n "$previous" && -f "$previous/image" ]]; then
+    current_schema=$(cat "$candidate/schema-version" 2>/dev/null || echo 1)
+    previous_schema=$(cat "$previous/schema-version" 2>/dev/null || echo 1)
+    if [[ -n "$previous" && -f "$previous/image" && "$current_schema" == "$previous_schema" ]]; then
         echo 'Restoring previous image and Compose configuration.'
         export APP_IMAGE; APP_IMAGE=$(cat "$previous/image")
         docker compose --project-name activitytracker --env-file "$root/shared/.env" \
             -f "$previous/compose.production.yml" up -d --wait --wait-timeout 180
     else
-        echo 'First deployment failed; no previous release exists.'
+        echo 'No compatible previous release. Preserve database and use a forward fix; see DEPLOYMENT.md.'
     fi
     exit 1
 fi
