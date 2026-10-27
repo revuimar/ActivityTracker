@@ -7,10 +7,26 @@ public class Participant
     public string? NormalizedEmail { get; set; }
     public string? PasswordHash { get; set; }
     public string DisplayName { get; set; } = "";
-    public string? AccessToken { get; set; } // Protected with Data Protection; future sync must unprotect with StravaTokens.v1
+    public string? AccessToken { get; set; } // Protected with Data Protection (StravaTokens.v1).
     public string? RefreshToken { get; set; }
     public DateTimeOffset? TokenExpiresAt { get; set; }
+    public bool StravaActivityReadGranted { get; set; }
+    public DateTimeOffset? LastStravaSyncAt { get; set; }
+    public DateTimeOffset? LastStravaFullSyncAt { get; set; }
+    public string StravaSyncStatus { get; set; } = "not-connected";
     public List<Activity> Activities { get; set; } = [];
+}
+
+// ActivityId 0 imports recent history; -1 checks authorization; positive IDs fetch one activity.
+// Version prevents a webhook arriving during processing from being lost.
+public class StravaSyncJob
+{
+    public int ParticipantId { get; set; }
+    public Participant Participant { get; set; } = null!;
+    public long ActivityId { get; set; }
+    public long Version { get; set; } = 1;
+    public int Attempts { get; set; }
+    public DateTimeOffset NextAttemptAt { get; set; }
 }
 public class Challenge
 {

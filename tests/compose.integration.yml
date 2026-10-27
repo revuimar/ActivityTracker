@@ -1,7 +1,12 @@
 # CI-only settings: never include this override in a VPS deployment.
 services:
+  db:
+    ports:
+      - "127.0.0.1:15432:5432"
   app:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       TestLogin__Enabled: 'true'
       Admin__ParticipantId: '2'
+      Strava__WebhookVerifyToken: 'ci-only-webhook-verification-token-335'
+      Strava__WebhookSubscriptionId: '123'

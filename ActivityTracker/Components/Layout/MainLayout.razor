@@ -6,6 +6,7 @@
             <a href="/">Leaderboards</a>
             @if (Context?.User.Identity?.IsAuthenticated == true) {
                 <a href="/leaderboards/new">Create leaderboard</a>
+                <a href="/strava">Strava sync</a>
                 <a href="/login">@Context.User.Identity.Name</a>
                 <form method="post" action="/auth/logout"><AntiforgeryToken /><button class="link-button" type="submit">Log out</button></form>
             } else {

@@ -30,7 +30,7 @@ else {
                 }</tbody></table></div>
         }
     </section>
-    <section><h2>How scoring works</h2><p>Qualifying workouts earn 5 points below 30 minutes, 6 points at 30–44 minutes, or 7 points at 45+ minutes. Only the best qualifying activity per day counts. Workouts must finish on the same day by @Board.Cutoff.ToString("HH:mm"), meet the @Board.MinimumMinutes-minute minimum, and fall within the leaderboard dates.</p><p>Every account appears automatically, unless the app administrator removes it. Accounts without workouts show zero points. Activity import from Strava is still being built.</p></section>
+    <section><h2>How scoring works</h2><p>Qualifying workouts earn 5 points below 30 minutes, 6 points at 30–44 minutes, or 7 points at 45+ minutes. Only the best qualifying activity per day counts. Workouts must finish on the same day by @Board.Cutoff.ToString("HH:mm"), meet the @Board.MinimumMinutes-minute minimum, and fall within the leaderboard dates.</p><p>Every account appears automatically, unless the app administrator removes it. Accounts without qualifying workouts show zero points. <a href="/strava">Connect Strava or check your activity sync.</a></p></section>
 }
 @code {
     [Parameter] public int Id { get; set; }

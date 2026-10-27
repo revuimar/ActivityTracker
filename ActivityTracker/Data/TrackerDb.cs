@@ -8,12 +8,17 @@ public sealed class TrackerDb(DbContextOptions<TrackerDb> options) : DbContext(o
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<Challenge> Challenges => Set<Challenge>();
     public DbSet<LeaderboardExclusion> LeaderboardExclusions => Set<LeaderboardExclusion>();
+    public DbSet<StravaSyncJob> StravaSyncJobs => Set<StravaSyncJob>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Participant>().HasIndex(x => x.StravaAthleteId).IsUnique();
         b.Entity<Participant>().HasIndex(x => x.NormalizedEmail).IsUnique();
         b.Entity<Participant>().Property(x => x.NormalizedEmail).HasMaxLength(254);
         b.Entity<Participant>().Property(x => x.DisplayName).HasMaxLength(80);
+        b.Entity<Participant>().Property(x => x.RefreshToken).IsConcurrencyToken();
+        b.Entity<StravaSyncJob>().HasKey(x => new { x.ParticipantId, x.ActivityId });
+        b.Entity<StravaSyncJob>().HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId);
+        b.Entity<StravaSyncJob>().HasIndex(x => x.NextAttemptAt);
         b.Entity<Challenge>().Property(x => x.Name).HasMaxLength(100);
         b.Entity<Challenge>().Property(x => x.Description).HasMaxLength(1000);
         b.Entity<LeaderboardExclusion>().HasKey(x => new { x.ChallengeId, x.ParticipantId });
