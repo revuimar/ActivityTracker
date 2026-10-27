@@ -4,9 +4,8 @@ services:
     image: ${APP_IMAGE:?Set APP_IMAGE to a GHCR image digest}
     restart: unless-stopped
     init: true
-    # Release directories are /opt/activitytracker/releases/<release>.
     env_file:
-      - ../../shared/.env
+      - /opt/activitytracker/shared/.env
     ports:
       - "${APP_BIND_IP:-127.0.0.1}:${APP_PORT:-8080}:8080"
     environment:
