@@ -1,5 +1,6 @@
 """End-to-end authorization, membership, local login and antiforgery checks; stdlib only."""
 import html
+from html.parser import HTMLParser
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import http.cookiejar
@@ -50,6 +51,32 @@ def login(browser, email):
     check(status == 302 and headers['Location'] == '/', 'password login')
 
 anon, admin, member, newcomer = (Browser() for _ in range(4))
+class AssetParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.base = None
+        self.assets = []
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'base':
+            self.base = attrs.get('href')
+        if tag == 'link' and attrs.get('rel') == 'stylesheet':
+            self.assets.append((attrs['href'], 'text/css'))
+        if tag == 'script' and 'blazor.web.js' in attrs.get('src', ''):
+            self.assets.append((attrs['src'], 'javascript'))
+for page in ('/', '/leaderboards/1', '/leaderboards/1?week=2026-10-19'):
+    status, document, _ = anon.request(page)
+    assets = AssetParser()
+    assets.feed(document)
+    check(status == 200 and assets.base == '/', 'document declares root base on ' + page)
+    check(len(assets.assets) == 2, 'stylesheet and Blazor script present on ' + page)
+    base_url = urllib.parse.urljoin(BASE + page, assets.base)
+    for source, media_type in assets.assets:
+        resolved = urllib.parse.urljoin(base_url, source)
+        path = urllib.parse.urlsplit(resolved).path
+        check(path in ('/css/site.css', '/_framework/blazor.web.js'), 'asset resolves at site root: ' + path)
+        status, body, headers = anon.request(path)
+        check(status == 200 and body and media_type in headers.get('Content-Type', ''), 'asset loads with correct content type: ' + path)
 status, text, _ = anon.request('/leaderboards/1')
 check(status == 200 and 'Original athlete' in text, 'public board retains original starter participant')
 check(anon.request('/leaderboards/save', {})[0] == 302, 'anonymous edits rejected')
