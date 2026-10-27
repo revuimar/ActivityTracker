@@ -1,5 +1,7 @@
 """End-to-end authorization, membership, local login and antiforgery checks; stdlib only."""
 import html
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import http.cookiejar
 import json
 import re
@@ -95,6 +97,40 @@ check(status == 302 and 'Bob Member' in anon.request('/leaderboards/1')[1], 'adm
 invalid_board = dict(board, endsOn='2019-01-01')
 check(member.post(board_url + '/edit', '/leaderboards/save', invalid_board)[0] == 400, 'invalid date range rejected')
 check(anon.request('/leaderboards/999999')[0] == 404, 'missing leaderboard returns 404')
+today = datetime.now(ZoneInfo('Europe/Warsaw')).date()
+monday = today - timedelta(days=today.weekday())
+previous = monday - timedelta(days=7)
+def total_for(text, name):
+    row = next(row for row in re.findall(r'<tr>(.*?)</tr>', text, re.S) if name + '</b>' in row)
+    return int(re.search(r'<strong>(\d+)</strong>', row)[1])
+status, current_text, _ = anon.request('/leaderboards/1')
+check(status == 200 and total_for(current_text, 'Original athlete') == 6, 'current week includes only current-week workout')
+previous_url = '/leaderboards/1?week=' + previous.isoformat()
+check(previous_url in html.unescape(current_text) and 'rel="next"' not in current_text,
+      'current week links to previous week but not to the future')
+status, history_text, _ = anon.request(previous_url)
+check(status == 200 and total_for(history_text, 'Original athlete') == 7 and 'rel="next"' in history_text and 'Current week' in history_text,
+      'previous-week URL loads historical scores and provides forward/current navigation')
+check(total_for(anon.request('/leaderboards/1?week=' + (previous + timedelta(days=2)).isoformat())[1], 'Original athlete') == 7,
+      'midweek date selects the containing week')
+check(total_for(anon.request('/leaderboards/1?week=9999-12-31')[1], 'Original athlete') == 6,
+      'future week query is safely limited to current week')
+check(total_for(anon.request('/leaderboards/1?week=bad-date')[1], 'Original athlete') == 6,
+      'invalid week query falls back without a server error')
+first_text = anon.request('/leaderboards/1?week=0001-01-01')[1]
+check('rel="prev"' not in first_text and 'Week 1 of' in first_text, 'first leaderboard week prevents earlier navigation')
+ended_board = dict(board, id='0', name='Ended history challenge', startsOn=(previous - timedelta(days=7)).isoformat(),
+                   endsOn=(previous + timedelta(days=2)).isoformat(), minimumMinutes='15', cutoff='11:00')
+status, _, headers = member.post('/leaderboards/new', '/leaderboards/save', ended_board)
+ended_text = anon.request(headers['Location'])[1]
+check(status == 302 and total_for(ended_text, 'Original athlete') == 7 and 'rel="next"' not in ended_text,
+      'ended leaderboard opens its final week rather than an empty current week')
+future_board = dict(ended_board, name='Future history challenge', startsOn=(today + timedelta(days=7)).isoformat(),
+                    endsOn=(today + timedelta(days=14)).isoformat())
+status, _, headers = member.post('/leaderboards/new', '/leaderboards/save', future_board)
+future_text = anon.request(headers['Location'])[1]
+check(status == 302 and 'Weekly rankings will appear once it begins.' in future_text and 'rel="prev"' not in future_text,
+      'future leaderboard shows its start notice without week navigation')
 check(anon.request('/strava/sync', {})[0] == 302, 'anonymous sync requests rejected')
 check(member.request('/strava/sync', {})[0] == 400, 'manual sync requires antiforgery token')
 status, _, headers = member.post('/strava', '/strava/sync', {})

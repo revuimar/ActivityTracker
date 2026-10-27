@@ -20,30 +20,52 @@ else {
         <div class="tile"><span>Morning cutoff</span><strong>@Board.Cutoff.ToString("HH:mm")</strong></div>
     </div>
     <section>
-        <div class="section-head"><h2>Weekly leaderboard</h2><span class="muted">@Monday.ToString("dd MMM") – @Monday.AddDays(6).ToString("dd MMM yyyy")</span></div>
-        @if (Rows.Count == 0) { <p class="muted">No participants yet. Log in to join.</p> }
-        else {
-            <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Athlete</th><th>Mornings</th><th>Workout</th><th>Bonus</th><th>Total</th></tr></thead>
-                <tbody>@for (var i = 0; i < Rows.Count; i++) {
-                    var row = Rows[i];
-                    <tr><td>@(i + 1)</td><td><b>@row.Name</b></td><td>@row.ActiveDays / 7</td><td>@row.WorkoutPoints</td><td>+@row.Bonus</td><td><strong>@row.Total</strong></td></tr>
+        @if (Weeks is null) {
+            <h2>Weekly leaderboard</h2>
+            <p class="muted">This leaderboard starts on @Board.StartsOn.ToString("dd MMM yyyy"). Weekly rankings will appear once it begins.</p>
+        } else {
+            <div class="section-head"><h2>Weekly leaderboard</h2><span class="muted">@Monday.ToString("dd MMM") – @Monday.AddDays(6).ToString("dd MMM yyyy")</span></div>
+            <nav class="week-navigation" aria-label="Leaderboard weeks">
+                @if (Weeks.HasPrevious) {
+                    <a href="@WeekUrl(Monday.AddDays(-7))" rel="prev">← Previous week</a>
+                } else { <span class="muted" aria-disabled="true">← Previous week</span> }
+                <span class="muted">Week @Weeks.Number of @Weeks.Count</span>
+                @if (Weeks.HasNext) {
+                    <a href="@WeekUrl(Monday.AddDays(7))" rel="next">Next week →</a>
+                    <a href="/leaderboards/@Id">@(Weeks.LatestMonday == LeaderboardWeeks.MondayOf(Today) ? "Current week" : "Latest week")</a>
+                } else { <span class="muted" aria-disabled="true">Next week →</span> }
+            </nav>
+            <p class="muted">Rankings use imported activities and the leaderboard's current rules and participants.</p>
+            @if (Rows.Count == 0) { <p class="muted">No participants yet. Log in to join.</p> }
+            else {
+                <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Athlete</th><th>Mornings</th><th>Workout</th><th>Bonus</th><th>Total</th></tr></thead>
+                    <tbody>@for (var i = 0; i < Rows.Count; i++) {
+                        var row = Rows[i];
+                        <tr><td>@(i + 1)</td><td><b>@row.Name</b></td><td>@row.ActiveDays / 7</td><td>@row.WorkoutPoints</td><td>+@row.Bonus</td><td><strong>@row.Total</strong></td></tr>
                 }</tbody></table></div>
+            }
         }
     </section>
     <section><h2>How scoring works</h2><p>Qualifying workouts earn 5 points below 30 minutes, 6 points at 30–44 minutes, or 7 points at 45+ minutes. Only the best qualifying activity per day counts. Workouts must finish on the same day by @Board.Cutoff.ToString("HH:mm"), meet the @Board.MinimumMinutes-minute minimum, and fall within the leaderboard dates.</p><p>Every account appears automatically, unless the app administrator removes it. Accounts without qualifying workouts show zero points. <a href="/strava">Connect Strava or check your activity sync.</a></p></section>
 }
 @code {
     [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery(Name = "week")] public string? Week { get; set; }
     [CascadingParameter] public HttpContext? Context { get; set; }
     private Challenge? Board;
     private List<ScoreRow> Rows = [];
-    private DateOnly Monday;
+    private LeaderboardWeeks? Weeks;
+    private DateOnly Today;
+    private DateOnly Monday => Weeks!.SelectedMonday;
+    private string WeekUrl(DateOnly monday) => $"/leaderboards/{Id}?week={monday.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)}";
     protected override async Task OnParametersSetAsync() {
         await using var db = await DbFactory.CreateDbContextAsync();
         Board = await db.Challenges.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Id);
         if (Board is null) { if (Context is not null) Context.Response.StatusCode = 404; return; }
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw")));
-        Monday = today.AddDays(-((int)today.DayOfWeek + 6) % 7);
+        Today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw")));
+        Weeks = LeaderboardWeeks.Select(Board.StartsOn, Board.EndsOn, Today, Week);
+        Rows = [];
+        if (Weeks is null) return;
         var start = Monday.ToDateTime(TimeOnly.MinValue);
         var end = start.AddDays(7);
         var people = await db.Participants.AsNoTracking()
