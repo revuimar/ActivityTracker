@@ -16,6 +16,10 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+var clientId = builder.Configuration["Strava:ClientId"];
+var clientSecret = builder.Configuration["Strava:ClientSecret"];
+var verifyToken = builder.Configuration["Strava:WebhookVerifyToken"];
+
 builder.Services.AddRazorComponents();
 builder.Services.AddDataProtection().SetApplicationName("ActivityTracker");
 var keyDirectory = builder.Configuration["DataProtection:KeyDirectory"];

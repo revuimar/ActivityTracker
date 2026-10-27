@@ -2,6 +2,7 @@
 **/obj/
 .env
 .env.*
+shared/.env
 !.env.example
 !*.env.example
 *.zip
