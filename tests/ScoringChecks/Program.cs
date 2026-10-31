@@ -51,3 +51,47 @@ var historyPerson = new Participant { DisplayName = "Historical runner", Activit
 var past = Scoring.Weekly([historyPerson], monday.AddDays(-7), new TimeOnly(11, 0)).Single();
 var present = Scoring.Weekly([historyPerson], monday, new TimeOnly(11, 0)).Single();
 WeekCheck(past.Total == 7 && present.Total == 6, "past and current weeks score only their own activities");
+
+Activity OnDate(DateOnly day, int minutes = 15, int hour = 8) => new() {
+    StartLocal = day.ToDateTime(new TimeOnly(hour, 0)), MovingSeconds = minutes * 60, ElapsedSeconds = minutes * 60
+};
+var october = new DateOnly(2026, 10, 1);
+var fullMonthPerson = new Participant {
+    DisplayName = "Consistent runner",
+    Activities = Enumerable.Range(0, 31).Select(d => OnDate(october.AddDays(d))).ToList()
+};
+var monthly = Scoring.Monthly([fullMonthPerson], october, new TimeOnly(11, 0)).Single();
+WeekCheck(monthly.ActiveDays == 31 && monthly.WorkoutPoints == 155 && monthly.Bonus == 55 && monthly.Total == 210,
+    "monthly totals sum daily points and separate weekly bonuses");
+monthly = Scoring.Monthly([fullMonthPerson], october, new TimeOnly(11, 0), 15, october.AddDays(9), october.AddDays(19)).Single();
+WeekCheck(monthly.ActiveDays == 11 && monthly.WorkoutPoints == 55 && monthly.Bonus == 15 && monthly.Total == 70,
+    "partial challenge month clips both points and weekly bonuses");
+var crossingMonth = new Participant { Activities = Enumerable.Range(0, 7).Select(d => OnDate(new DateOnly(2026, 9, 28).AddDays(d))).ToList() };
+monthly = Scoring.Monthly([crossingMonth], october, new TimeOnly(11, 0)).Single();
+WeekCheck(monthly.ActiveDays == 4 && monthly.Total == 20 && monthly.Bonus == 0,
+    "days in the previous month cannot inflate a boundary week's monthly bonus");
+var monthlyLimits = new Participant { Activities = [OnDate(october, 15), OnDate(october, 45), OnDate(october.AddDays(1), 14),
+    OnDate(october.AddDays(2), 60, 10), OnDate(october.AddDays(3), 61, 10), OnDate(october.AddDays(4), 120, 23),
+    OnDate(october.AddDays(-1), 45), OnDate(october.AddMonths(1), 45)] };
+monthly = Scoring.Monthly([monthlyLimits], october, new TimeOnly(11, 0)).Single();
+WeekCheck(monthly.ActiveDays == 2 && monthly.WorkoutPoints == 14 && monthly.Bonus == 0,
+    "monthly scoring preserves best-per-day, duration, cutoff and calendar boundaries");
+WeekCheck(Scoring.Monthly([new Participant { DisplayName = "No workouts" }], october, new TimeOnly(11, 0)).Single().Total == 0,
+    "monthly table retains participants without workouts");
+var months = LeaderboardMonths.Select(october.AddDays(9), october.AddDays(19), today, today, null)!;
+WeekCheck(months.PeriodStart == october.AddDays(9) && months.PeriodEnd == october.AddDays(19) && months.EligibleDays == 11 &&
+    !months.HasPrevious && !months.HasNext, "monthly range clips to challenge dates");
+months = LeaderboardMonths.Select(october, new(2099, 12, 31), today, today, "2099-12")!;
+WeekCheck(months.SelectedMonth == october && !months.HasNext, "monthly navigation cannot enter future months");
+months = LeaderboardMonths.Select(october, new(2099, 12, 31), today, new(2026, 9, 28), null)!;
+WeekCheck(months.SelectedMonth == october, "first partial week chooses a month inside the challenge");
+months = LeaderboardMonths.Select(new(2028, 1, 1), new(2028, 3, 31), new(2028, 3, 1), new(2028, 3, 1), "2028-02")!;
+WeekCheck(months.EligibleDays == 29 && months.PeriodEnd == new DateOnly(2028, 2, 29), "calendar months handle leap years");
+months = LeaderboardMonths.Select(new(2026, 1, 1), new(2027, 12, 31), new(2027, 1, 1), new(2027, 1, 1), "2026-12")!;
+WeekCheck(months.SelectedMonth == new DateOnly(2026, 12, 1) && months.PeriodEnd == new DateOnly(2026, 12, 31), "month navigation crosses year boundaries");
+WeekCheck(LeaderboardMonths.Select(october, new(2099, 12, 31), today, today, "bad-month")?.SelectedMonth == october,
+    "invalid month falls back safely");
+WeekCheck(LeaderboardMonths.Select(october, new(2099, 12, 31), today, today, "0001-01") is { HasPrevious: false },
+    "month navigation stops at challenge start");
+WeekCheck(LeaderboardMonths.Select(new(2026, 11, 1), new(2026, 12, 31), today, today, null) is null,
+    "future challenge has no monthly rankings yet");

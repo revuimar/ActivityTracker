@@ -46,18 +46,48 @@ else {
             }
         }
     </section>
-    <section><h2>How scoring works</h2><p>Qualifying workouts earn 5 points below 30 minutes, 6 points at 30–44 minutes, or 7 points at 45+ minutes. Only the best qualifying activity per day counts. Workouts must finish on the same day by @Board.Cutoff.ToString("HH:mm"), meet the @Board.MinimumMinutes-minute minimum, and fall within the leaderboard dates.</p><p>Every account appears automatically, unless the app administrator removes it. Accounts without qualifying workouts show zero points. <a href="/strava">Connect Strava or check your activity sync.</a></p></section>
+    <section aria-labelledby="monthly-heading">
+        @if (Months is null) {
+            <h2 id="monthly-heading">Monthly leaderboard</h2>
+            <p class="muted">Monthly rankings will appear once this leaderboard begins.</p>
+        } else {
+            <div class="section-head"><h2 id="monthly-heading">Monthly leaderboard · @Months.SelectedMonth.ToString("MMMM yyyy")</h2><span class="muted">@Months.PeriodStart.ToString("dd MMM") – @Months.PeriodEnd.ToString("dd MMM yyyy")</span></div>
+            <nav class="week-navigation" aria-label="Leaderboard months">
+                @if (Months.HasPrevious) {
+                    <a href="@MonthUrl(Months.SelectedMonth.AddMonths(-1))" rel="prev">← Previous month</a>
+                } else { <span class="muted" aria-disabled="true">← Previous month</span> }
+                @if (Months.HasNext) {
+                    <a href="@MonthUrl(Months.SelectedMonth.AddMonths(1))" rel="next">Next month →</a>
+                    <a href="@MonthUrl(Months.LatestMonth)">@(Months.LatestMonth == LeaderboardMonths.MonthOf(Today) ? "Current month" : "Latest month")</a>
+                } else { <span class="muted" aria-disabled="true">Next month →</span> }
+            </nav>
+            <p class="muted">Daily workout points and weekly bonuses summed within this calendar month. Only days within the challenge dates count, including for bonuses in partial weeks.</p>
+            @if (MonthlyRows.Count == 0) { <p class="muted">No participants yet. Log in to join.</p> }
+            else {
+                <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Athlete</th><th>Mornings</th><th>Workout</th><th>Bonus</th><th>Total</th></tr></thead>
+                    <tbody>@for (var i = 0; i < MonthlyRows.Count; i++) {
+                        var row = MonthlyRows[i];
+                        <tr><td>@(i + 1)</td><td><b>@row.Name</b></td><td>@row.ActiveDays / @Months.EligibleDays</td><td>@row.WorkoutPoints</td><td>+@row.Bonus</td><td><strong>@row.Total</strong></td></tr>
+                    }</tbody></table></div>
+            }
+        }
+    </section>
+    <section><h2>How scoring works</h2><p>Qualifying workouts earn 5 points below 30 minutes, 6 points at 30–44 minutes, or 7 points at 45+ minutes. Only the best qualifying activity per day counts. Workouts must finish on the same day by @Board.Cutoff.ToString("HH:mm"), meet the @Board.MinimumMinutes-minute minimum, and fall within the leaderboard dates.</p><p>Monthly totals use the same rules across a calendar month and sum the existing weekly bonuses; there is no separate monthly bonus. Weeks spanning two months count only the days in the selected month toward its bonus.</p><p>Every account appears automatically, unless the app administrator removes it. Accounts without qualifying workouts show zero points. <a href="/strava">Connect Strava or check your activity sync.</a></p></section>
 }
 @code {
     [Parameter] public int Id { get; set; }
     [SupplyParameterFromQuery(Name = "week")] public string? Week { get; set; }
+    [SupplyParameterFromQuery(Name = "month")] public string? Month { get; set; }
     [CascadingParameter] public HttpContext? Context { get; set; }
     private Challenge? Board;
     private List<ScoreRow> Rows = [];
+    private List<ScoreRow> MonthlyRows = [];
     private LeaderboardWeeks? Weeks;
+    private LeaderboardMonths? Months;
     private DateOnly Today;
     private DateOnly Monday => Weeks!.SelectedMonday;
     private string WeekUrl(DateOnly monday) => $"/leaderboards/{Id}?week={monday.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)}";
+    private string MonthUrl(DateOnly month) => $"{WeekUrl(Monday)}&month={month.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture)}";
     protected override async Task OnParametersSetAsync() {
         await using var db = await DbFactory.CreateDbContextAsync();
         Board = await db.Challenges.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Id);
@@ -65,14 +95,22 @@ else {
         Today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw")));
         Weeks = LeaderboardWeeks.Select(Board.StartsOn, Board.EndsOn, Today, Week);
         Rows = [];
+        MonthlyRows = [];
+        Months = null;
         if (Weeks is null) return;
+        Months = LeaderboardMonths.Select(Board.StartsOn, Board.EndsOn, Today,
+            string.IsNullOrWhiteSpace(Week) ? Today : Monday, Month);
         var start = Monday.ToDateTime(TimeOnly.MinValue);
         var end = start.AddDays(7);
+        var monthStart = Months!.PeriodStart.ToDateTime(TimeOnly.MinValue);
+        var monthEnd = Months.PeriodEnd.ToDateTime(TimeOnly.MinValue).AddDays(1);
         var people = await db.Participants.AsNoTracking()
             .Where(p => !db.LeaderboardExclusions.Any(e => e.ChallengeId == Id && e.ParticipantId == p.Id))
             .Select(p => new Participant { Id = p.Id, DisplayName = p.DisplayName,
-                Activities = p.Activities.Where(a => a.StartLocal >= start && a.StartLocal < end).ToList() })
+                Activities = p.Activities.Where(a => (a.StartLocal >= start && a.StartLocal < end) ||
+                    (a.StartLocal >= monthStart && a.StartLocal < monthEnd)).ToList() })
             .ToListAsync();
         Rows = Scoring.Weekly(people, Monday, Board.Cutoff, Board.MinimumMinutes, Board.StartsOn, Board.EndsOn);
+        MonthlyRows = Scoring.Monthly(people, Months.SelectedMonth, Board.Cutoff, Board.MinimumMinutes, Board.StartsOn, Board.EndsOn);
     }
 }

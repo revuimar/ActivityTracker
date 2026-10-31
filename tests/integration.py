@@ -158,6 +158,32 @@ status, _, headers = member.post('/leaderboards/new', '/leaderboards/save', futu
 future_text = anon.request(headers['Location'])[1]
 check(status == 302 and 'Weekly rankings will appear once it begins.' in future_text and 'rel="prev"' not in future_text,
       'future leaderboard shows its start notice without week navigation')
+def month_section(document):
+    return re.search(r'<section aria-labelledby="monthly-heading">(.*?)</section>', document, re.S)[1]
+month_text = month_section(current_text)
+current_month_total = (6 if monday.month == today.month else 0) + (7 if previous.month == today.month else 0)
+check(current_text.index('Weekly leaderboard') < current_text.index('Monthly leaderboard') and
+      total_for(month_text, 'Original athlete') == current_month_total,
+      'monthly leaderboard appears below weekly and sums calendar-month workout points')
+last_month = today.replace(day=1) - timedelta(days=1)
+month_url = '/leaderboards/1?week=' + monday.isoformat() + '&month=' + last_month.strftime('%Y-%m')
+status, prior_month_document, _ = anon.request(month_url)
+prior_month_total = 5 + (6 if monday.month == last_month.month else 0) + (7 if previous.month == last_month.month else 0)
+check(status == 200 and total_for(month_section(prior_month_document), 'Original athlete') == prior_month_total and
+      total_for(prior_month_document, 'Original athlete') == 6,
+      'previous-month navigation loads its own points and keeps the selected weekly results')
+check('Previous month' in month_text and 'rel="next"' not in month_text and
+      'Next month' in month_section(prior_month_document), 'monthly UI links stop at current month')
+check(total_for(month_section(anon.request('/leaderboards/1?month=2099-12')[1]), 'Original athlete') == current_month_total,
+      'future month query clamps to current month')
+check(total_for(month_section(anon.request('/leaderboards/1?month=invalid')[1]), 'Original athlete') == current_month_total,
+      'invalid month query falls back safely')
+check('rel="prev"' not in month_section(first_text), 'monthly UI cannot precede challenge start')
+check('Monthly rankings will appear once this leaderboard begins.' in future_text,
+      'future challenge shows monthly start notice')
+ended_month_total = 7 if previous.month == (previous + timedelta(days=2)).month else 0
+check(total_for(month_section(ended_text), 'Original athlete') == ended_month_total,
+      'monthly results exclude workouts outside the challenge dates')
 check(anon.request('/strava/sync', {})[0] == 302, 'anonymous sync requests rejected')
 check(member.request('/strava/sync', {})[0] == 400, 'manual sync requires antiforgery token')
 status, _, headers = member.post('/strava', '/strava/sync', {})
